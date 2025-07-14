@@ -33,7 +33,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # === Шлях до відео ===
-VIDEO_PATH = r"C:\\Users\\admin\\Desktop\\TelegramBot\\intro.mp4"
+VIDEO_PATH = "intro.mp4"
 
 # === Завантаження даних ===
 
