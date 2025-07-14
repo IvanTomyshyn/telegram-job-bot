@@ -1,0 +1,20 @@
+# google_sheets.py
+
+import gspread
+from oauth2client.service_account import ServiceAccountCredentials
+from datetime import datetime
+
+# Підключення до таблиці
+def connect_to_sheet():
+    scope = ['https://spreadsheets.google.com/feeds',
+             'https://www.googleapis.com/auth/drive']
+    creds = ServiceAccountCredentials.from_json_keyfile_name('credentials.json', scope)
+    client = gspread.authorize(creds)
+    sheet = client.open('Telegram_Bot_Anketa').sheet1
+    return sheet
+
+# Запис рядка з анкетою
+def write_to_google_sheet(name, phone, age, vacancy, source="Telegram Bot"):
+    sheet = connect_to_sheet()
+    timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    sheet.append_row([timestamp, name, phone, age, vacancy, source])
