@@ -5,5 +5,5 @@ app = Flask(__name__)
 def hello():
     return "Telegram Job Bot - simple test"
 
-if name == "main":
+if __name__ == "__main__":
     app.run()
