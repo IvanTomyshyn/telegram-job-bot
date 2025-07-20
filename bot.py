@@ -159,6 +159,12 @@ def button(update: Update, context: CallbackContext):
     elif data.startswith('vacancy_'):
         show_vacancy_description(query, data)
 
+def start_form(update: Update, context: CallbackContext) -> int:
+    query = update.callback_query
+    context.user_data['vacancy'] = query.data.split('|')[1]
+    query.message.reply_text("Введіть ваше ім'я:")
+    return ASK_NAME
+
 def main():
     updater = Updater(TOKEN, use_context=True)
     dp = updater.dispatcher
