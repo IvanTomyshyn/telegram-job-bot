@@ -20,7 +20,7 @@ from google_sheets import write_to_google_sheet
 
 # === Налаштування ===
 
-TOKEN = '7688879325:AAH_Nl7u08zZj3cTDmjHTBSkxWIEMg3XBIc'
+TOKEN = os.environ.get("TOKEN")
 GREETING_FILE = 'hello.txt'
 VACANCIES_FILE = 'vacancies.txt'
 DESCRIPTIONS_FILE = 'vacancy_descriptions.txt'
