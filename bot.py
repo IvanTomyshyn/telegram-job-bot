@@ -1,8 +1,8 @@
 from datetime import datetime 
 import os 
 import json 
-import logging from flask 
-import Flask, request
+import logging 
+from flask import Flask, request
 
 from telegram import ( Update as TGUpdate, InlineKeyboardButton, InlineKeyboardMarkup ) 
 from telegram.ext import ( Updater, CommandHandler, CallbackQueryHandler, CallbackContext, ConversationHandler, MessageHandler, Filters ) 
