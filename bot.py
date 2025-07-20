@@ -67,41 +67,35 @@ def load_groups():
 
 # === Анкета ===
 
-def start_form(update: Update, context: CallbackContext):
-    query = update.callback_query
-    _, vacancy = query.data.split('|')
-    context.user_data['vacancy'] = vacancy
-    query.answer()
-    query.message.reply_text("👤 Введи своє *ім’я та прізвище*:", parse_mode='Markdown')
-    return ASK_NAME
+def submit_form(update: Update, context: CallbackContext) -> int:
+    user_data = context.user_data
+    print("➡️ Початок submit_form")
 
-def ask_phone(update: Update, context: CallbackContext):
-    context.user_data['name'] = update.message.text
-    update.message.reply_text("📞 Введи свій *номер телефону*:", parse_mode='Markdown')
-    return ASK_PHONE
+    try:
+        name = user_data.get("name")
+        phone = user_data.get("phone")
+        age = user_data.get("age")
+        vacancy = user_data.get("vacancy")
+        source = user_data.get("source", "Telegram")
 
-def ask_age(update: Update, context: CallbackContext):
-    context.user_data['phone'] = update.message.text
-    update.message.reply_text("🎂 Скільки тобі *повних років*:", parse_mode='Markdown')
-    return ASK_AGE
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-def finish_form(update: Update, context: CallbackContext):
-    context.user_data['age'] = update.message.text
+        print("📄 Дані для таблиці готові")
 
-    name = context.user_data['name']
-    phone = context.user_data['phone']
-    age = context.user_data['age']
-    vacancy = context.user_data['vacancy']
+        worksheet.append_row([timestamp, name, phone, age, vacancy, source])
+        print("✅ Дані записані у таблицю")
 
-    write_to_google_sheet(name, phone, age, vacancy)
+        context.bot.send_message(
+            chat_id="@robota_cz_24_7",
+            text=f"🆕 Нова анкета:\n\n👤 Ім'я: {name}\n📞 Телефон: {phone}\n🎂 Вік: {age}\n💼 Вакансія: {vacancy}"
+        )
+        print("📢 Повідомлення надіслано в чат координаторів")
 
-    update.message.reply_text("✅ *Дякуємо!* Ми отримали твої дані.\nНайближчим часом координатор зв’яжеться з тобою.", parse_mode='Markdown')
+        update.message.reply_text("✅ Дякуємо! Ваші дані успішно отримані. Ми зв’яжемось з вами найближчим часом.")
+        print("📬 Повідомлення 'Дякуємо' відправлено")
 
-    context.bot.send_message(
-        chat_id='@robota_cz_24_7',
-        text=f"📥 *Нова анкета!*\n👤 {name}\n📞 {phone}\n🎂 {age} років\n💼 {vacancy}",
-        parse_mode='Markdown'
-    )
+    except Exception as e:
+        print("❌ ПОМИЛКА у submit_form:", e)
 
     return ConversationHandler.END
 
@@ -182,8 +176,17 @@ def main():
     )
     dp.add_handler(form_handler)
 
-    updater.start_polling()
-    updater.idle()
+    import os
+
+PORT = int(os.environ.get("PORT", "8443"))
+
+updater.start_webhook(
+    listen="0.0.0.0",
+    port=PORT,
+    url_path=TOKEN,
+    webhook_url=os.environ.get("WEBHOOK_URL") + "/" + TOKEN
+)
+updater.idle()
 
 if __name__ == '__main__':
     main()
