@@ -159,6 +159,20 @@ def button(update: Update, context: CallbackContext):
     elif data.startswith('vacancy_'):
         show_vacancy_description(query, data)
 
+def ask_phone(update: Update, context: CallbackContext) -> int:
+    context.user_data["name"] = update.message.text
+    update.message.reply_text("Введіть ваш номер телефону:")
+    return ASK_PHONE
+
+def ask_age(update: Update, context: CallbackContext) -> int:
+    context.user_data["phone"] = update.message.text
+    update.message.reply_text("Скільки вам років?")
+    return ASK_AGE
+
+def finish_form(update: Update, context: CallbackContext) -> int:
+    context.user_data["age"] = update.message.text
+    return submit_form(update, context)
+
 def start_form(update: Update, context: CallbackContext) -> int:
     query = update.callback_query
     context.user_data['vacancy'] = query.data.split('|')[1]
