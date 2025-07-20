@@ -177,17 +177,18 @@ def main():
     )
     dp.add_handler(form_handler)
 
-    import os
+    # === Webhook запуск всередині main() ===
+    PORT = int(os.environ.get("PORT", "8443"))
+    WEBHOOK_URL = os.environ.get("WEBHOOK_URL")
 
-PORT = int(os.environ.get("PORT", "8443"))
+    updater.start_webhook(
+        listen="0.0.0.0",
+        port=PORT,
+        url_path=TOKEN,
+        webhook_url=f"{WEBHOOK_URL}/{TOKEN}"
+    )
 
-updater.start_webhook(
-    listen="0.0.0.0",
-    port=PORT,
-    url_path=TOKEN,
-    webhook_url=os.environ.get("WEBHOOK_URL") + "/" + TOKEN
-)
-updater.idle()
+    updater.idle()
 
 if __name__ == '__main__':
     main()
