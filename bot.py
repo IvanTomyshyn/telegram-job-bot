@@ -183,3 +183,8 @@ form_handler = ConversationHandler(
     fallbacks=[CommandHandler('cancel', cancel_form)]
 )
 dispatcher.add_handler(form_handler)
+
+if __name__ == "__main__":
+    from waitress import serve
+    port = int(os.environ.get("PORT", 5000))
+    serve(app, host="0.0.0.0", port=port)
