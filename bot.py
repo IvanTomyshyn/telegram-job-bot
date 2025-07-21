@@ -13,7 +13,7 @@ from telegram.ext import (
     ConversationHandler,
     MessageHandler,
     Filters,
-    Updater  # ⬅️ ДОДАЙ ЦЕЙ РЯДОК
+    Updater
 )
 from google_sheets import write_to_google_sheet
 
@@ -67,9 +67,7 @@ def load_groups():
 # === Анкета ===
 
 def submit_form(update: Update, context: CallbackContext) -> int:
-    from gspread import worksheet # тимчасово тут, встав замість якщо потрібно
     user_data = context.user_data
-
     try:
         name = user_data.get("name")
         phone = user_data.get("phone")
@@ -78,7 +76,7 @@ def submit_form(update: Update, context: CallbackContext) -> int:
         source = user_data.get("source", "Telegram")
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-        worksheet.append_row([timestamp, name, phone, age, vacancy, source])
+        write_to_google_sheet([timestamp, name, phone, age, vacancy, source])
 
         context.bot.send_message(
             chat_id="@robota_cz_24_7",
@@ -98,6 +96,7 @@ def cancel_form(update: Update, context: CallbackContext):
 # === Команди ===
 
 def start(update: Update, context: CallbackContext):
+    context.user_data.clear() # 👈 ОБОВ’ЯЗКОВО очищаємо дані
     greeting = load_greeting()
     keyboard = [[InlineKeyboardButton("▶️ Далі", callback_data='next')]]
     reply_markup = InlineKeyboardMarkup(keyboard)
@@ -196,7 +195,7 @@ form_handler = ConversationHandler(
 )
 dispatcher.add_handler(form_handler)
 
-# === Запуск Flask ===
+# === Запуск Flask + Webhook ===
 
 def main():
     updater = Updater(TOKEN, use_context=True)
@@ -229,6 +228,5 @@ def main():
 
     updater.idle()
 
-# 👇 Це залишаєш без змін
 if __name__ == '__main__':
     main()
