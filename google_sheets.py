@@ -14,3 +14,6 @@ credentials = service_account.Credentials.from_service_account_info(credentials_
 client = gspread.authorize(credentials)
 
 worksheet = client.open(SPREADSHEET_NAME).sheet1
+
+def write_to_google_sheet(data):
+    worksheet.append_row(data)
