@@ -197,6 +197,37 @@ dispatcher.add_handler(form_handler)
 
 # === Запуск Flask ===
 
+def main():
+    updater = Updater(TOKEN, use_context=True)
+    dp = updater.dispatcher
+
+    dp.add_handler(CommandHandler('start', start))
+    dp.add_handler(CallbackQueryHandler(start_form, pattern=r'^form\|'))
+    dp.add_handler(CallbackQueryHandler(button, pattern='^(next|group_.*|vacancy_.*)$'))
+
+    form_handler = ConversationHandler(
+        entry_points=[CallbackQueryHandler(start_form, pattern=r'^form\|')],
+        states={
+            ASK_NAME: [MessageHandler(Filters.text & ~Filters.command, ask_phone)],
+            ASK_PHONE: [MessageHandler(Filters.text & ~Filters.command, ask_age)],
+            ASK_AGE: [MessageHandler(Filters.text & ~Filters.command, finish_form)],
+        },
+        fallbacks=[CommandHandler('cancel', cancel_form)]
+    )
+    dp.add_handler(form_handler)
+
+    PORT = int(os.environ.get("PORT", "8443"))
+    WEBHOOK_URL = os.environ.get("WEBHOOK_URL")
+
+    updater.start_webhook(
+        listen="0.0.0.0",
+        port=PORT,
+        url_path=TOKEN,
+        webhook_url=f"{WEBHOOK_URL}/{TOKEN}"
+    )
+
+    updater.idle()
+
+# 👇 Це залишаєш без змін
 if __name__ == '__main__':
-    port = int(os.environ.get('PORT', 8443))
-    app.run(host='0.0.0.0', port=port)
+    main()
