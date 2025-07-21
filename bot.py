@@ -12,7 +12,8 @@ from telegram.ext import (
     CallbackContext,
     ConversationHandler,
     MessageHandler,
-    Filters
+    Filters,
+    Updater  # ⬅️ ДОДАЙ ЦЕЙ РЯДОК
 )
 from google_sheets import write_to_google_sheet
 

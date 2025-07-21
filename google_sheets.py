@@ -1,22 +1,12 @@
-# google_sheets.py
-
+import os
 import gspread
-from google.oauth2.service_account import Credentials
-from datetime import datetime
+from google.oauth2 import service_account
 
-# Підключення до Google Таблиці
-def connect_to_sheet():
-    scope = [
-        "https://www.googleapis.com/auth/spreadsheets",
-        "https://www.googleapis.com/auth/drive"
-    ]
-    creds = Credentials.from_service_account_file("credentials.json", scopes=scope)
-    client = gspread.authorize(creds)
-    sheet = client.open("Telegram_Bot_Anketa").sheet1
-    return sheet
+SCOPES = ['https://www.googleapis.com/auth/spreadsheets']
+SPREADSHEET_NAME = 'Telegram_Bot_Anketa'
 
-# Запис анкети
-def write_to_google_sheet(name, phone, age, vacancy, source="Telegram Bot"):
-    sheet = connect_to_sheet()
-    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    sheet.append_row([timestamp, name, phone, age, vacancy, source])
+credentials_info = json.loads(os.environ['GOOGLE_CREDENTIALS'])
+credentials = service_account.Credentials.from_service_account_info(credentials_info, scopes=SCOPES)
+client = gspread.authorize(credentials)
+
+worksheet = client.open(SPREADSHEET_NAME).sheet1
