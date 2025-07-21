@@ -1,24 +1,34 @@
 import logging
 import os
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, InputFile
-from telegram.ext import Updater, CommandHandler, CallbackQueryHandler, CallbackContext, ConversationHandler, MessageHandler, Filters
+from telegram.ext import (
+    Updater,
+    CommandHandler,
+    CallbackQueryHandler,
+    CallbackContext,
+    ConversationHandler,
+    MessageHandler,
+    Filters,
+)
 from google_sheets import write_to_google_sheet
 from datetime import datetime
 
 # === Logging ===
-logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
+logging.basicConfig(
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO
+)
 logger = logging.getLogger(__name__)
 
-# === Стан для ConversationHandler ===
+# === Conversation states ===
 (SELECTING_CATEGORY, SELECTING_VACANCY, ASK_NAME, ASK_PHONE, ASK_AGE, CONFIRM_DATA) = range(6)
 
-# === Завантаження текстів з .txt файлів ===
+# === Load content ===
 def load_greeting():
     with open("hello.txt", "r", encoding="utf-8") as f:
         return f.read()
 
 def load_vacancy_descriptions():
-    with open("vacancy_descriptions.txt", "r", encoding="utf-8") as f:
+    with open("vacancy_descriptions", "r", encoding="utf-8") as f:
         content = f.read()
     blocks = content.strip().split("\n\n")
     descriptions = {}
@@ -29,45 +39,52 @@ def load_vacancy_descriptions():
     return descriptions
 
 def load_vacancy_groups():
-    with open("vacancy_groups.txt", "r", encoding="utf-8") as f:
-        lines = f.readlines()
+    with open("vacancy_groups", "r", encoding="utf-8") as f:
+        content = f.read()
+    lines = content.strip().split("\n")
     groups = {"men": [], "women": [], "couples": []}
     for line in lines:
         if " - " in line:
-            title, group = line.strip().split(" - ")
-            if group.lower() == "чоловіки":
-                groups["men"].append(title.strip())
-            elif group.lower() == "жінки":
-                groups["women"].append(title.strip())
-            elif group.lower() == "пари":
-                groups["couples"].append(title.strip())
+            group, vacancy = line.split(" - ", 1)
+            key = group.lower().strip()
+            if key in groups:
+                groups[key].append(vacancy.strip())
     return groups
 
-# === Команди ===
+def load_vacancies():
+    import json
+    with open("vacancies.json", "r", encoding="utf-8") as f:
+        return json.load(f)
+
+# === Handlers ===
 def start(update: Update, context: CallbackContext) -> int:
     greeting = load_greeting()
     update.message.reply_text(greeting)
-    video_path = 'intro.mp4'
-    if os.path.exists(video_path):
-        with open(video_path, 'rb') as video:
-            update.message.reply_video(video=InputFile(video))
+    with open("intro.mp4", "rb") as video:
+        update.message.reply_video(video)
     keyboard = [[InlineKeyboardButton("Далі ▶️", callback_data="next")]]
-    update.message.reply_text("Після перегляду просто натисни «Далі» і ми підберемо вакансію, яка підійде саме тобі 😉", reply_markup=InlineKeyboardMarkup(keyboard))
+    update.message.reply_text("Готові дізнатись більше?", reply_markup=InlineKeyboardMarkup(keyboard))
     return SELECTING_CATEGORY
+
+def handle_next(update: Update, context: CallbackContext) -> int:
+    query = update.callback_query
+    query.answer()
+    keyboard = [
+        [InlineKeyboardButton("Вакансії для чоловіків", callback_data="men")],
+        [InlineKeyboardButton("Вакансії для жінок", callback_data="women")],
+        [InlineKeyboardButton("Вакансії для сімейних пар", callback_data="couples")],
+    ]
+    query.edit_message_text("Оберіть категорію вакансій:", reply_markup=InlineKeyboardMarkup(keyboard))
+    return SELECTING_VACANCY
 
 def handle_group_selection(update: Update, context: CallbackContext) -> int:
     query = update.callback_query
     query.answer()
-    selected = query.data
-    context.user_data['group'] = selected
-
+    group = query.data
+    context.user_data["group"] = group
     groups = load_vacancy_groups()
-    vacancies = groups.get(selected, [])
-    if not vacancies:
-        query.edit_message_text("На жаль, вакансій у цій категорії наразі немає.")
-        return ConversationHandler.END
-
-    keyboard = [[InlineKeyboardButton(vac, callback_data=vac)] for vac in vacancies]
+    vacancies = groups.get(group, [])
+    keyboard = [[InlineKeyboardButton(v, callback_data=v)] for v in vacancies]
     query.edit_message_text("Оберіть вакансію:", reply_markup=InlineKeyboardMarkup(keyboard))
     return SELECTING_VACANCY
 
@@ -75,83 +92,93 @@ def handle_vacancy_selection(update: Update, context: CallbackContext) -> int:
     query = update.callback_query
     query.answer()
     vacancy = query.data
-    context.user_data['vacancy'] = vacancy
-
+    context.user_data["vacancy"] = vacancy
     descriptions = load_vacancy_descriptions()
     description = descriptions.get(vacancy, "Опис вакансії наразі недоступний.")
-    query.edit_message_text(f"""*{vacancy}*\n\n{description}\n\nНатисніть "Заповнити анкету", щоб подати заявку.""",
-                            parse_mode='Markdown',
-                            reply_markup=InlineKeyboardMarkup(
-                                [[InlineKeyboardButton("Заповнити анкету 📝", callback_data="fill_form")]]))
+    text = f"*{vacancy}*\n\n{description}\n\nНатисніть \"Заповнити анкету\", щоб подати заявку."
+    keyboard = [[InlineKeyboardButton("Заповнити анкету 📝", callback_data="fill_form")]]
+    query.edit_message_text(text=text, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(keyboard))
     return ASK_NAME
 
 def fill_form(update: Update, context: CallbackContext) -> int:
     update.callback_query.answer()
-    update.callback_query.edit_message_text("Введіть ваше *ім'я та прізвище*:", parse_mode='Markdown')
+    update.callback_query.edit_message_text("Введіть ваше *ім’я та прізвище*:", parse_mode="Markdown")
     return ASK_NAME
 
 def ask_phone(update: Update, context: CallbackContext) -> int:
-    context.user_data['name'] = update.message.text
-    update.message.reply_text("Введіть ваш *номер телефону* (з +420 або +380):", parse_mode='Markdown')
+    context.user_data["name"] = update.message.text
+    update.message.reply_text("Введіть ваш *номер телефону* (+420 або +380):", parse_mode="Markdown")
     return ASK_PHONE
 
 def ask_age(update: Update, context: CallbackContext) -> int:
-    context.user_data['phone'] = update.message.text
+    context.user_data["phone"] = update.message.text
     update.message.reply_text("Скільки вам повних років?")
     return ASK_AGE
 
 def confirm_data(update: Update, context: CallbackContext) -> int:
-    context.user_data['age'] = update.message.text
+    context.user_data["age"] = update.message.text
     data = context.user_data
-    text = f"🔎 Перевірте дані:\n\n👤 Ім'я: {data['name']}\n📞 Телефон: {data['phone']}\n🎂 Вік: {data['age']}\n💼 Вакансія: {data['vacancy']}\n\nНатисніть 'Підтвердити', щоб надіслати."
-    keyboard = [[InlineKeyboardButton("Підтвердити ✅", callback_data="submit")]]
-    update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
-    return CONFIRM_DATA
-
-def submit_form(update: Update, context: CallbackContext) -> int:
-    query = update.callback_query
-    query.answer()
-    data = context.user_data
-    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    write_to_google_sheet([
-        timestamp,
-        data['name'],
-        data['phone'],
-        data['age'],
-        data['vacancy'],
-        'Telegram'
-    ])
-    query.edit_message_text("✅ Дякуємо! Вашу анкету успішно надіслано. Очікуйте дзвінка найближчим часом.")
+    summary = (
+        f"📄 Дані анкети:\n\n"
+        f"👤 Ім’я: {data['name']}\n"
+        f"📞 Телефон: {data['phone']}\n"
+        f"🎂 Вік: {data['age']}\n"
+        f"💼 Вакансія: {data['vacancy']}"
+    )
+    update.message.reply_text("Дякуємо! Ваші дані збережено. Наш менеджер з вами зв'яжеться.")
+    write_to_google_sheet({
+        "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "name": data["name"],
+        "phone": data["phone"],
+        "age": data["age"],
+        "vacancy": data["vacancy"],
+        "source": "Telegram"
+    })
+    context.bot.send_message(
+        chat_id='@robota_cz_24_7',
+        text=f"🔔 Нова заявка!\n\n{summary}"
+    )
     return ConversationHandler.END
 
+def cancel(update: Update, context: CallbackContext) -> int:
+    update.message.reply_text("Дію скасовано.")
+    return ConversationHandler.END
+
+# === Main ===
 def main():
-    TOKEN = os.getenv("BOT_TOKEN")
+    TOKEN = os.getenv("TOKEN")
+    if not TOKEN:
+        raise ValueError("TOKEN is missing from environment variables.")
     updater = Updater(TOKEN, use_context=True)
     dp = updater.dispatcher
 
     conv_handler = ConversationHandler(
-        entry_points=[CommandHandler('start', start)],
+        entry_points=[CommandHandler("start", start)],
         states={
-            SELECTING_CATEGORY: [
-                CallbackQueryHandler(handle_group_selection, pattern='^(men|women|couples)$'),
-                CallbackQueryHandler(lambda u, c: u.callback_query.message.reply_text("Оберіть категорію:", reply_markup=InlineKeyboardMarkup([
-                    [InlineKeyboardButton("Вакансії для чоловіків", callback_data="men")],
-                    [InlineKeyboardButton("Вакансії для жінок", callback_data="women")],
-                    [InlineKeyboardButton("Вакансії для сімейних пар", callback_data="couples")],
-                ])), pattern='^next$')
+            SELECTING_CATEGORY: [CallbackQueryHandler(handle_next, pattern="^next$")],
+            SELECTING_VACANCY: [
+                CallbackQueryHandler(handle_group_selection, pattern="^(men|women|couples)$"),
+                CallbackQueryHandler(handle_vacancy_selection)
             ],
-            SELECTING_VACANCY: [CallbackQueryHandler(handle_vacancy_selection)],
-            ASK_NAME: [CallbackQueryHandler(fill_form, pattern='^fill_form$'), MessageHandler(Filters.text & ~Filters.command, ask_phone)],
+            ASK_NAME: [CallbackQueryHandler(fill_form, pattern="^fill_form$"), MessageHandler(Filters.text & ~Filters.command, ask_phone)],
             ASK_PHONE: [MessageHandler(Filters.text & ~Filters.command, ask_age)],
             ASK_AGE: [MessageHandler(Filters.text & ~Filters.command, confirm_data)],
-            CONFIRM_DATA: [CallbackQueryHandler(submit_form, pattern='^submit$')]
         },
-        fallbacks=[]
+        fallbacks=[CommandHandler("cancel", cancel)],
     )
 
     dp.add_handler(conv_handler)
-    updater.start_polling()
+
+    PORT = int(os.environ.get("PORT", 8443))
+    WEBHOOK_URL = os.environ.get("WEBHOOK_URL")
+
+    updater.start_webhook(
+        listen="0.0.0.0",
+        port=PORT,
+        url_path=TOKEN,
+        webhook_url=f"{WEBHOOK_URL}/{TOKEN}"
+    )
     updater.idle()
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()
