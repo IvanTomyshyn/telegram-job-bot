@@ -3,7 +3,6 @@ import json
 import logging
 from datetime import datetime
 from flask import Flask, request
-
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, Bot
 from telegram.ext import (
     Dispatcher,
@@ -20,22 +19,22 @@ from google_sheets import write_to_google_sheet
 app = Flask(__name__)
 TOKEN = os.environ.get("TOKEN")
 bot = Bot(token=TOKEN)
-
-# === Dispatcher ===
 dispatcher = Dispatcher(bot=bot, update_queue=None, workers=4, use_context=True)
 
-# === Логування ===
+# === Logging ===
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# === Змінні ===
+# === Files ===
 GREETING_FILE = 'hello.txt'
+VACANCIES_FILE = 'vacancies.txt'
 DESCRIPTIONS_FILE = 'vacancy_descriptions'
 GROUPS_FILE = 'vacancy_groups'
 VIDEO_PATH = 'intro.mp4'
+
 ASK_NAME, ASK_PHONE, ASK_AGE = range(3)
 
-# === Завантаження даних ===
+# === Завантаження файлів ===
 def load_greeting():
     with open(GREETING_FILE, 'r', encoding='utf-8') as file:
         return file.read()
@@ -80,6 +79,7 @@ def submit_form(update: Update, context: CallbackContext) -> int:
         update.message.reply_text("✅ Дякуємо! Ваші дані успішно отримані.")
     except Exception as e:
         logger.error(f"❌ ПОМИЛКА у submit_form: {e}")
+        update.message.reply_text("❌ Сталася помилка при відправці анкети. Спробуйте ще раз.")
     return ConversationHandler.END
 
 def cancel_form(update: Update, context: CallbackContext):
@@ -96,7 +96,7 @@ def start(update: Update, context: CallbackContext):
         with open(VIDEO_PATH, 'rb') as video:
             update.message.reply_video(video)
     except Exception as e:
-        logger.error(f"Помилка при надсиланні відео: {e}")
+        logger.error(f"❌ Помилка при надсиланні відео: {e}")
     update.message.reply_text("Натисніть кнопку нижче, щоб продовжити:", reply_markup=reply_markup)
 
 def handle_next(query, context: CallbackContext):
@@ -110,7 +110,10 @@ def handle_next(query, context: CallbackContext):
 def show_vacancies_by_group(query, group_name):
     groups = load_groups()
     group_vacancies = groups.get(group_name, [])
-    keyboard = [[InlineKeyboardButton(title, callback_data=f'vacancy_{title}')] for title in group_vacancies]
+    keyboard = [
+        [InlineKeyboardButton(title, callback_data=f'vacancy_{title}')]
+        for title in group_vacancies
+    ]
     query.edit_message_text(text="Оберіть вакансію:", reply_markup=InlineKeyboardMarkup(keyboard))
 
 def show_vacancy_description(query, data):
@@ -154,7 +157,7 @@ def start_form(update: Update, context: CallbackContext) -> int:
     query.message.reply_text("Введіть ваше ім'я:")
     return ASK_NAME
 
-# === Роутинг Flask (Webhook) ===
+# === Flask Routes ===
 @app.route(f'/{TOKEN}', methods=['POST'])
 def webhook():
     update = Update.de_json(request.get_json(force=True), bot)
@@ -163,9 +166,9 @@ def webhook():
 
 @app.route('/')
 def index():
-    return "🤖 Бот запущено на Render і працює!"
+    return "🌐 Бот запущено на Render і працює!"
 
-# === Обробники ===
+# === Handlers ===
 dispatcher.add_handler(CommandHandler('start', start))
 dispatcher.add_handler(CallbackQueryHandler(button, pattern='^(next|group_.*|vacancy_.*)$'))
 dispatcher.add_handler(CallbackQueryHandler(start_form, pattern=r'^form\|'))
