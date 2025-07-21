@@ -12,8 +12,7 @@ from telegram.ext import (
     CallbackContext,
     ConversationHandler,
     MessageHandler,
-    Filters,
-    Updater
+    Filters
 )
 from google_sheets import write_to_google_sheet
 
@@ -31,15 +30,12 @@ logger = logging.getLogger(__name__)
 
 # === Змінні ===
 GREETING_FILE = 'hello.txt'
-VACANCIES_FILE = 'vacancies.txt'
-DESCRIPTIONS_FILE = 'vacancy_descriptions.txt'
-GROUPS_FILE = 'vacancy_groups.txt'
+DESCRIPTIONS_FILE = 'vacancy_descriptions'
+GROUPS_FILE = 'vacancy_groups'
 VIDEO_PATH = 'intro.mp4'
-
 ASK_NAME, ASK_PHONE, ASK_AGE = range(3)
 
-# === Завантаження файлів ===
-
+# === Завантаження даних ===
 def load_greeting():
     with open(GREETING_FILE, 'r', encoding='utf-8') as file:
         return file.read()
@@ -65,7 +61,6 @@ def load_groups():
     return groups
 
 # === Анкета ===
-
 def submit_form(update: Update, context: CallbackContext) -> int:
     user_data = context.user_data
     try:
@@ -83,10 +78,8 @@ def submit_form(update: Update, context: CallbackContext) -> int:
             text=f"🆕 Нова анкета:\n\n👤 Ім'я: {name}\n📞 Телефон: {phone}\n🎂 Вік: {age}\n💼 Вакансія: {vacancy}"
         )
         update.message.reply_text("✅ Дякуємо! Ваші дані успішно отримані.")
-
     except Exception as e:
-        print(f"❌ ПОМИЛКА у submit_form: {e}")
-
+        logger.error(f"❌ ПОМИЛКА у submit_form: {e}")
     return ConversationHandler.END
 
 def cancel_form(update: Update, context: CallbackContext):
@@ -94,9 +87,7 @@ def cancel_form(update: Update, context: CallbackContext):
     return ConversationHandler.END
 
 # === Команди ===
-
 def start(update: Update, context: CallbackContext):
-    context.user_data.clear() # 👈 ОБОВ’ЯЗКОВО очищаємо дані
     greeting = load_greeting()
     keyboard = [[InlineKeyboardButton("▶️ Далі", callback_data='next')]]
     reply_markup = InlineKeyboardMarkup(keyboard)
@@ -119,10 +110,7 @@ def handle_next(query, context: CallbackContext):
 def show_vacancies_by_group(query, group_name):
     groups = load_groups()
     group_vacancies = groups.get(group_name, [])
-    keyboard = [
-        [InlineKeyboardButton(title, callback_data=f'vacancy_{title}')]
-        for title in group_vacancies
-    ]
+    keyboard = [[InlineKeyboardButton(title, callback_data=f'vacancy_{title}')] for title in group_vacancies]
     query.edit_message_text(text="Оберіть вакансію:", reply_markup=InlineKeyboardMarkup(keyboard))
 
 def show_vacancy_description(query, data):
@@ -166,8 +154,7 @@ def start_form(update: Update, context: CallbackContext) -> int:
     query.message.reply_text("Введіть ваше ім'я:")
     return ASK_NAME
 
-# === Роути Flask ===
-
+# === Роутинг Flask (Webhook) ===
 @app.route(f'/{TOKEN}', methods=['POST'])
 def webhook():
     update = Update.de_json(request.get_json(force=True), bot)
@@ -176,10 +163,9 @@ def webhook():
 
 @app.route('/')
 def index():
-    return "Бот працює"
+    return "🤖 Бот запущено на Render і працює!"
 
-# === Handlers ===
-
+# === Обробники ===
 dispatcher.add_handler(CommandHandler('start', start))
 dispatcher.add_handler(CallbackQueryHandler(button, pattern='^(next|group_.*|vacancy_.*)$'))
 dispatcher.add_handler(CallbackQueryHandler(start_form, pattern=r'^form\|'))
@@ -194,39 +180,3 @@ form_handler = ConversationHandler(
     fallbacks=[CommandHandler('cancel', cancel_form)]
 )
 dispatcher.add_handler(form_handler)
-
-# === Запуск Flask + Webhook ===
-
-def main():
-    updater = Updater(TOKEN, use_context=True)
-    dp = updater.dispatcher
-
-    dp.add_handler(CommandHandler('start', start))
-    dp.add_handler(CallbackQueryHandler(start_form, pattern=r'^form\|'))
-    dp.add_handler(CallbackQueryHandler(button, pattern='^(next|group_.*|vacancy_.*)$'))
-
-    form_handler = ConversationHandler(
-        entry_points=[CallbackQueryHandler(start_form, pattern=r'^form\|')],
-        states={
-            ASK_NAME: [MessageHandler(Filters.text & ~Filters.command, ask_phone)],
-            ASK_PHONE: [MessageHandler(Filters.text & ~Filters.command, ask_age)],
-            ASK_AGE: [MessageHandler(Filters.text & ~Filters.command, finish_form)],
-        },
-        fallbacks=[CommandHandler('cancel', cancel_form)]
-    )
-    dp.add_handler(form_handler)
-
-    PORT = int(os.environ.get("PORT", "8443"))
-    WEBHOOK_URL = os.environ.get("WEBHOOK_URL")
-
-    updater.start_webhook(
-        listen="0.0.0.0",
-        port=PORT,
-        url_path=TOKEN,
-        webhook_url=f"{WEBHOOK_URL}/{TOKEN}"
-    )
-
-    updater.idle()
-
-if __name__ == '__main__':
-    main()
