@@ -1,190 +1,163 @@
-import os
 import json
 import logging
-from datetime import datetime
-from flask import Flask, request
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, Bot
-from telegram.ext import (
-    Dispatcher,
-    CommandHandler,
-    CallbackQueryHandler,
-    CallbackContext,
-    ConversationHandler,
-    MessageHandler,
-    Filters
-)
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import Updater, CommandHandler, CallbackQueryHandler, CallbackContext, ConversationHandler, MessageHandler, Filters
 from google_sheets import write_to_google_sheet
+from datetime import datetime
 
-# === Flask ===
-app = Flask(__name__)
-TOKEN = os.environ.get("TOKEN")
-bot = Bot(token=TOKEN)
-dispatcher = Dispatcher(bot=bot, update_queue=None, workers=4, use_context=True)
-
-# === Logging ===
-logging.basicConfig(level=logging.INFO)
+# Увімкнення логування
+logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# === Files ===
-GREETING_FILE = 'hello.txt'
-VACANCIES_FILE = 'vacancies.txt'
-DESCRIPTIONS_FILE = 'vacancy_descriptions'
-GROUPS_FILE = 'vacancy_groups'
-VIDEO_PATH = 'intro.mp4'
+# === СТАНИ ДЛЯ АНКЕТИ ===
+NAME, PHONE, AGE, SOURCE = range(4)
 
-ASK_NAME, ASK_PHONE, ASK_AGE = range(3)
-
-# === Завантаження файлів ===
-def load_greeting():
-    with open(GREETING_FILE, 'r', encoding='utf-8') as file:
-        return file.read()
-
-def load_descriptions():
-    with open(DESCRIPTIONS_FILE, 'r', encoding='utf-8') as file:
-        blocks = file.read().split('\n\n')
-        return {block.split(':\n')[0].strip(): block.split(':\n')[1].strip() for block in blocks if ':\n' in block}
-
-def load_groups():
-    with open(GROUPS_FILE, 'r', encoding='utf-8') as file:
-        lines = file.readlines()
-    groups = {
-        'Вакансії для чоловіків': [],
-        'Вакансії для жінок': [],
-        'Вакансії для сімейних пар': []
-    }
-    for line in lines:
-        if '-' in line:
-            title, group = line.strip().split(' - ')
-            if group in groups:
-                groups[group].append(title.strip())
-    return groups
-
-# === Анкета ===
-def submit_form(update: Update, context: CallbackContext) -> int:
-    user_data = context.user_data
-    try:
-        name = user_data.get("name")
-        phone = user_data.get("phone")
-        age = user_data.get("age")
-        vacancy = user_data.get("vacancy")
-        source = user_data.get("source", "Telegram")
-        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-
-        write_to_google_sheet([timestamp, name, phone, age, vacancy, source])
-
-        context.bot.send_message(
-            chat_id="@robota_cz_24_7",
-            text=f"🆕 Нова анкета:\n\n👤 Ім'я: {name}\n📞 Телефон: {phone}\n🎂 Вік: {age}\n💼 Вакансія: {vacancy}"
-        )
-        update.message.reply_text("✅ Дякуємо! Ваші дані успішно отримані.")
-    except Exception as e:
-        logger.error(f"❌ ПОМИЛКА у submit_form: {e}")
-        update.message.reply_text("❌ Сталася помилка при відправці анкети. Спробуйте ще раз.")
-    return ConversationHandler.END
-
-def cancel_form(update: Update, context: CallbackContext):
-    update.message.reply_text("❌ Анкету скасовано.")
-    return ConversationHandler.END
-
-# === Команди ===
-def start(update: Update, context: CallbackContext):
-    greeting = load_greeting()
-    keyboard = [[InlineKeyboardButton("▶️ Далі", callback_data='next')]]
-    reply_markup = InlineKeyboardMarkup(keyboard)
+# === /start ===
+def start(update: Update, context: CallbackContext) -> None:
+    with open("hello.txt", "r", encoding="utf-8") as f:
+        greeting = f.read()
     update.message.reply_text(greeting)
-    try:
-        with open(VIDEO_PATH, 'rb') as video:
-            update.message.reply_video(video)
-    except Exception as e:
-        logger.error(f"❌ Помилка при надсиланні відео: {e}")
-    update.message.reply_text("Натисніть кнопку нижче, щоб продовжити:", reply_markup=reply_markup)
 
-def handle_next(query, context: CallbackContext):
-    keyboard = [
-        [InlineKeyboardButton("💁🏻‍♂️Вакансії для чоловіків", callback_data='group_Вакансії для чоловіків')],
-        [InlineKeyboardButton("💁🏼‍♀️Вакансії для жінок", callback_data='group_Вакансії для жінок')],
-        [InlineKeyboardButton("👩🏼‍❤️‍👨🏻Вакансії для сімейних пар", callback_data='group_Вакансії для сімейних пар')]
-    ]
-    query.edit_message_text("Оберіть категорію вакансій:", reply_markup=InlineKeyboardMarkup(keyboard))
+    with open("intro.mp4", "rb") as video:
+        context.bot.send_video(chat_id=update.effective_chat.id, video=video)
 
-def show_vacancies_by_group(query, group_name):
-    groups = load_groups()
-    group_vacancies = groups.get(group_name, [])
-    keyboard = [
-        [InlineKeyboardButton(title, callback_data=f'vacancy_{title}')]
-        for title in group_vacancies
-    ]
-    query.edit_message_text(text="Оберіть вакансію:", reply_markup=InlineKeyboardMarkup(keyboard))
+    keyboard = [[InlineKeyboardButton("➡️ Далі", callback_data="next")]]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    context.bot.send_message(chat_id=update.effective_chat.id, text="Натисни кнопку, щоб переглянути вакансії:", reply_markup=reply_markup)
 
-def show_vacancy_description(query, data):
-    title = data.replace('vacancy_', '')
-    descriptions = load_descriptions()
-    description = descriptions.get(title, "Опис вакансії недоступний.")
-    query.edit_message_text(text=f"{title}\n\n{description}")
-    query.message.reply_text("Бажаєш податись на цю вакансію?", reply_markup=InlineKeyboardMarkup([
-        [InlineKeyboardButton("✅ Заповнити анкету", callback_data=f"form|{title}")]
-    ]))
-
-def button(update: Update, context: CallbackContext):
+# === Обробка "Далі" ===
+def next_step(update: Update, context: CallbackContext) -> None:
     query = update.callback_query
     query.answer()
-    data = query.data
-    if data == 'next':
-        handle_next(query, context)
-    elif data.startswith('group_'):
-        group = data.replace('group_', '')
-        show_vacancies_by_group(query, group)
-    elif data.startswith('vacancy_'):
-        show_vacancy_description(query, data)
+    keyboard = [
+        [InlineKeyboardButton("👨‍🔧 Вакансії для чоловіків", callback_data="чоловіки")],
+        [InlineKeyboardButton("👩🏼‍💼 Вакансії для жінок", callback_data="жінки")],
+        [InlineKeyboardButton("👩‍❤️‍👨 Вакансії для сімейних пар", callback_data="пари")]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    query.edit_message_text(text="Оберіть категорію вакансій:", reply_markup=reply_markup)
 
-def ask_phone(update: Update, context: CallbackContext) -> int:
-    context.user_data["name"] = update.message.text
-    update.message.reply_text("Введіть ваш номер телефону:")
-    return ASK_PHONE
+# === Обробка вибору групи вакансій ===
+def handle_group_selection(update: Update, context: CallbackContext) -> None:
+    query = update.callback_query
+    group = query.data
+    query.answer()
 
-def ask_age(update: Update, context: CallbackContext) -> int:
-    context.user_data["phone"] = update.message.text
-    update.message.reply_text("Скільки вам років?")
-    return ASK_AGE
+    with open("vacancy_groups.txt", "r", encoding="utf-8") as f:
+        groups = f.read().splitlines()
 
-def finish_form(update: Update, context: CallbackContext) -> int:
-    context.user_data["age"] = update.message.text
-    return submit_form(update, context)
+    group_dict = {}
+    current_group = None
+    for line in groups:
+        if line.startswith("#"):
+            current_group = line.replace("#", "").strip()
+            group_dict[current_group] = []
+        elif current_group:
+            group_dict[current_group].append(line.strip())
 
+    vacancies = group_dict.get(group, [])
+
+    if not vacancies:
+        query.edit_message_text("На жаль, вакансій у цій категорії наразі немає.")
+        return
+
+    buttons = [[InlineKeyboardButton(vacancy, callback_data=vacancy)] for vacancy in vacancies]
+    reply_markup = InlineKeyboardMarkup(buttons)
+    query.edit_message_text("Оберіть вакансію:", reply_markup=reply_markup)
+
+# === Обробка вибору вакансії ===
+def show_vacancy_description(update: Update, context: CallbackContext) -> None:
+    query = update.callback_query
+    selected_vacancy = query.data
+    query.answer()
+
+    with open("vacancy_descriptions.txt", "r", encoding="utf-8") as f:
+        descriptions = f.read().split("\n\n")
+
+    description_dict = {}
+    for block in descriptions:
+        lines = block.strip().split("\n")
+        if lines:
+            title = lines[0].strip()
+            description = "\n".join(lines[1:]).strip()
+            description_dict[title] = description
+
+    full_description = description_dict.get(selected_vacancy, "Опис вакансії тимчасово недоступний.")
+    buttons = [[InlineKeyboardButton("✍️ Заповнити анкету", callback_data=f"form|{selected_vacancy}")]]
+    reply_markup = InlineKeyboardMarkup(buttons)
+    query.edit_message_text(text=full_description, reply_markup=reply_markup)
+
+# === Обробка кнопки "Заповнити анкету" ===
 def start_form(update: Update, context: CallbackContext) -> int:
     query = update.callback_query
-    context.user_data['vacancy'] = query.data.split('|')[1]
-    query.message.reply_text("Введіть ваше ім'я:")
-    return ASK_NAME
+    query.answer()
+    vacancy = query.data.split("|", 1)[1]
+    context.user_data['vacancy'] = vacancy
+    query.edit_message_text("Введіть, будь ласка, ваше ім’я:")
+    return NAME
 
-# === Flask Routes ===
-@app.route(f'/{TOKEN}', methods=['POST'])
-def webhook():
-    update = Update.de_json(request.get_json(force=True), bot)
-    dispatcher.process_update(update)
-    return 'ok'
+def get_name(update: Update, context: CallbackContext) -> int:
+    context.user_data['name'] = update.message.text
+    update.message.reply_text("Ваш номер телефону:")
+    return PHONE
 
-@app.route('/')
-def index():
-    return "🌐 Бот запущено на Render і працює!"
+def get_phone(update: Update, context: CallbackContext) -> int:
+    context.user_data['phone'] = update.message.text
+    update.message.reply_text("Скільки вам років?")
+    return AGE
 
-# === Handlers ===
-dispatcher.add_handler(CommandHandler('start', start))
-dispatcher.add_handler(CallbackQueryHandler(button, pattern='^(next|group_.*|vacancy_.*)$'))
-dispatcher.add_handler(CallbackQueryHandler(start_form, pattern=r'^form\|'))
+def get_age(update: Update, context: CallbackContext) -> int:
+    context.user_data['age'] = update.message.text
+    update.message.reply_text("Звідки ви дізнались про нас?")
+    return SOURCE
 
-form_handler = ConversationHandler(
-    entry_points=[CallbackQueryHandler(start_form, pattern=r'^form\|')],
-    states={
-        ASK_NAME: [MessageHandler(Filters.text & ~Filters.command, ask_phone)],
-        ASK_PHONE: [MessageHandler(Filters.text & ~Filters.command, ask_age)],
-        ASK_AGE: [MessageHandler(Filters.text & ~Filters.command, finish_form)],
-    },
-    fallbacks=[CommandHandler('cancel', cancel_form)]
-)
-dispatcher.add_handler(form_handler)
+def get_source(update: Update, context: CallbackContext) -> int:
+    context.user_data['source'] = update.message.text
 
-if __name__ == "__main__":
-    from waitress import serve
-    port = int(os.environ.get("PORT", 5000))
-    serve(app, host="0.0.0.0", port=port)
+    row = [
+        datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+        context.user_data['name'],
+        context.user_data['phone'],
+        context.user_data['age'],
+        context.user_data['vacancy'],
+        context.user_data['source']
+    ]
+
+    write_to_google_sheet(row)
+
+    update.message.reply_text("Дякуємо! Вашу анкету надіслано координатору. Очікуйте на зворотній зв'язок.")
+    return ConversationHandler.END
+
+def cancel(update: Update, context: CallbackContext) -> int:
+    update.message.reply_text('Анкету скасовано.')
+    return ConversationHandler.END
+
+# === Основна функція запуску ===
+def main() -> None:
+    TOKEN = "7688879325:AAH_Nl7u08zZj3cTDmjHTBSkxWIEMg3XBIc"
+    updater = Updater(TOKEN, use_context=True)
+    dispatcher = updater.dispatcher
+
+    dispatcher.add_handler(CommandHandler("start", start))
+    dispatcher.add_handler(CallbackQueryHandler(next_step, pattern='^next$'))
+    dispatcher.add_handler(CallbackQueryHandler(handle_group_selection, pattern='^(чоловіки|жінки|пари)$'))
+    dispatcher.add_handler(CallbackQueryHandler(show_vacancy_description, pattern='^(?!next$|чоловіки$|жінки$|пари$|form\|).+'))
+    dispatcher.add_handler(CallbackQueryHandler(start_form, pattern='^form\|'))
+
+    form_handler = ConversationHandler(
+        entry_points=[CallbackQueryHandler(start_form, pattern='^form\|')],
+        states={
+            NAME: [MessageHandler(Filters.text & ~Filters.command, get_name)],
+            PHONE: [MessageHandler(Filters.text & ~Filters.command, get_phone)],
+            AGE: [MessageHandler(Filters.text & ~Filters.command, get_age)],
+            SOURCE: [MessageHandler(Filters.text & ~Filters.command, get_source)]
+        },
+        fallbacks=[CommandHandler('cancel', cancel)]
+    )
+
+    dispatcher.add_handler(form_handler)
+    updater.start_polling()
+    updater.idle()
+
+if __name__ == '__main__':
+    main()
