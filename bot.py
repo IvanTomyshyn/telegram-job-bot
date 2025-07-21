@@ -79,7 +79,7 @@ def handle_vacancy_selection(update: Update, context: CallbackContext) -> int:
 
     descriptions = load_vacancy_descriptions()
     description = descriptions.get(vacancy, "Опис вакансії наразі недоступний.")
-    query.edit_message_text(f"*{vacancy}*\n\n{description}\n\nНатисніть "Заповнити анкету", щоб подати заявку.",
+    query.edit_message_text(f"""*{vacancy}*\n\n{description}\n\nНатисніть "Заповнити анкету", щоб подати заявку.""",
                             parse_mode='Markdown',
                             reply_markup=InlineKeyboardMarkup(
                                 [[InlineKeyboardButton("Заповнити анкету 📝", callback_data="fill_form")]]))
