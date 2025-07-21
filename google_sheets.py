@@ -3,7 +3,10 @@ import json
 import gspread
 from google.oauth2 import service_account
 
-SCOPES = ['https://www.googleapis.com/auth/spreadsheets']
+SCOPES = [
+    'https://www.googleapis.com/auth/spreadsheets',
+    'https://www.googleapis.com/auth/drive'
+]
 SPREADSHEET_NAME = 'Telegram_Bot_Anketa'
 
 credentials_info = json.loads(os.environ['GOOGLE_CREDENTIALS'])
