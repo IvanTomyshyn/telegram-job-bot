@@ -181,5 +181,5 @@ form_handler = ConversationHandler(
 )
 dispatcher.add_handler(form_handler)
 
-if name == 'main':
+if __name__ == '__main__': # ✅ правильно
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
