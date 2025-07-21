@@ -1,16 +1,12 @@
-from datetime import datetime
 import os
 import json
 import logging
+from datetime import datetime
 from flask import Flask, request
 
-from telegram import (
-    Update as TGUpdate,
-    InlineKeyboardButton,
-    InlineKeyboardMarkup
-)
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, Bot
 from telegram.ext import (
-    Updater,
+    Dispatcher,
     CommandHandler,
     CallbackQueryHandler,
     CallbackContext,
@@ -20,34 +16,32 @@ from telegram.ext import (
 )
 from google_sheets import write_to_google_sheet
 
-# === Flask app ===
+# === Flask ===
 app = Flask(__name__)
-dispatcher = None
-
-# === Налаштування ===
 TOKEN = os.environ.get("TOKEN")
-GREETING_FILE = 'hello.txt'
-VACANCIES_FILE = 'vacancies.txt'
-DESCRIPTIONS_FILE = 'vacancy_descriptions.txt'
-GROUPS_FILE = 'vacancy_groups.txt'
+bot = Bot(token=TOKEN)
 
-ASK_NAME, ASK_PHONE, ASK_AGE = range(3)
+# === Dispatcher ===
+dispatcher = Dispatcher(bot=bot, update_queue=None, workers=4, use_context=True)
 
 # === Логування ===
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# === Шлях до відео ===
-VIDEO_PATH = "intro.mp4"
+# === Змінні ===
+GREETING_FILE = 'hello.txt'
+VACANCIES_FILE = 'vacancies.txt'
+DESCRIPTIONS_FILE = 'vacancy_descriptions.txt'
+GROUPS_FILE = 'vacancy_groups.txt'
+VIDEO_PATH = 'intro.mp4'
 
-# === Завантаження даних ===
+ASK_NAME, ASK_PHONE, ASK_AGE = range(3)
+
+# === Завантаження файлів ===
+
 def load_greeting():
     with open(GREETING_FILE, 'r', encoding='utf-8') as file:
         return file.read()
-
-def load_vacancies():
-    with open(VACANCIES_FILE, 'r', encoding='utf-8') as file:
-        return json.load(file)
 
 def load_descriptions():
     with open(DESCRIPTIONS_FILE, 'r', encoding='utf-8') as file:
@@ -70,8 +64,11 @@ def load_groups():
     return groups
 
 # === Анкета ===
-def submit_form(update: TGUpdate, context: CallbackContext) -> int:
+
+def submit_form(update: Update, context: CallbackContext) -> int:
+    from gspread import worksheet # тимчасово тут, встав замість якщо потрібно
     user_data = context.user_data
+
     try:
         name = user_data.get("name")
         phone = user_data.get("phone")
@@ -84,21 +81,22 @@ def submit_form(update: TGUpdate, context: CallbackContext) -> int:
 
         context.bot.send_message(
             chat_id="@robota_cz_24_7",
-            text=f"\ud83c\udd95 Нова анкета:\n\n\ud83d\udc64 Ім'я: {name}\n\ud83d\udcde Телефон: {phone}\n\ud83c\udf82 Вік: {age}\n\ud83d\udcbc Вакансія: {vacancy}"
+            text=f"🆕 Нова анкета:\n\n👤 Ім'я: {name}\n📞 Телефон: {phone}\n🎂 Вік: {age}\n💼 Вакансія: {vacancy}"
         )
-
-        update.message.reply_text("\u2705 Дякуємо! Ваші дані успішно отримані. Ми зв’яжемось з вами найближчим часом.")
+        update.message.reply_text("✅ Дякуємо! Ваші дані успішно отримані.")
 
     except Exception as e:
-        print("❌ ПОМИЛКА у submit_form:", e)
+        print(f"❌ ПОМИЛКА у submit_form: {e}")
+
     return ConversationHandler.END
 
-def cancel_form(update: TGUpdate, context: CallbackContext):
+def cancel_form(update: Update, context: CallbackContext):
     update.message.reply_text("❌ Анкету скасовано.")
     return ConversationHandler.END
 
-# === Обробка команд ===
-def start(update: TGUpdate, context: CallbackContext):
+# === Команди ===
+
+def start(update: Update, context: CallbackContext):
     greeting = load_greeting()
     keyboard = [[InlineKeyboardButton("▶️ Далі", callback_data='next')]]
     reply_markup = InlineKeyboardMarkup(keyboard)
@@ -116,8 +114,7 @@ def handle_next(query, context: CallbackContext):
         [InlineKeyboardButton("💁🏼‍♀️Вакансії для жінок", callback_data='group_Вакансії для жінок')],
         [InlineKeyboardButton("👩🏼‍❤️‍👨🏻Вакансії для сімейних пар", callback_data='group_Вакансії для сімейних пар')]
     ]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    query.edit_message_text("Оберіть категорію вакансій:", reply_markup=reply_markup)
+    query.edit_message_text("Оберіть категорію вакансій:", reply_markup=InlineKeyboardMarkup(keyboard))
 
 def show_vacancies_by_group(query, group_name):
     groups = load_groups()
@@ -126,20 +123,18 @@ def show_vacancies_by_group(query, group_name):
         [InlineKeyboardButton(title, callback_data=f'vacancy_{title}')]
         for title in group_vacancies
     ]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    query.edit_message_text(text="Оберіть вакансію:", reply_markup=reply_markup)
+    query.edit_message_text(text="Оберіть вакансію:", reply_markup=InlineKeyboardMarkup(keyboard))
 
 def show_vacancy_description(query, data):
     title = data.replace('vacancy_', '')
     descriptions = load_descriptions()
     description = descriptions.get(title, "Опис вакансії недоступний.")
     query.edit_message_text(text=f"{title}\n\n{description}")
-    reply_markup = InlineKeyboardMarkup([
+    query.message.reply_text("Бажаєш податись на цю вакансію?", reply_markup=InlineKeyboardMarkup([
         [InlineKeyboardButton("✅ Заповнити анкету", callback_data=f"form|{title}")]
-    ])
-    query.message.reply_text("Бажаєш податись на цю вакансію?", reply_markup=reply_markup)
+    ]))
 
-def button(update: TGUpdate, context: CallbackContext):
+def button(update: Update, context: CallbackContext):
     query = update.callback_query
     query.answer()
     data = query.data
@@ -151,66 +146,57 @@ def button(update: TGUpdate, context: CallbackContext):
     elif data.startswith('vacancy_'):
         show_vacancy_description(query, data)
 
-def ask_phone(update: TGUpdate, context: CallbackContext) -> int:
+def ask_phone(update: Update, context: CallbackContext) -> int:
     context.user_data["name"] = update.message.text
     update.message.reply_text("Введіть ваш номер телефону:")
     return ASK_PHONE
 
-def ask_age(update: TGUpdate, context: CallbackContext) -> int:
+def ask_age(update: Update, context: CallbackContext) -> int:
     context.user_data["phone"] = update.message.text
     update.message.reply_text("Скільки вам років?")
     return ASK_AGE
 
-def finish_form(update: TGUpdate, context: CallbackContext) -> int:
+def finish_form(update: Update, context: CallbackContext) -> int:
     context.user_data["age"] = update.message.text
     return submit_form(update, context)
 
-def start_form(update: TGUpdate, context: CallbackContext) -> int:
+def start_form(update: Update, context: CallbackContext) -> int:
     query = update.callback_query
     context.user_data['vacancy'] = query.data.split('|')[1]
     query.message.reply_text("Введіть ваше ім'я:")
     return ASK_NAME
 
-def main():
-    global dispatcher
-    updater = Updater(TOKEN, use_context=True)
-    dp = updater.dispatcher
-    dispatcher = dp
-
-    dp.add_handler(CommandHandler('start', start))
-    dp.add_handler(CallbackQueryHandler(button, pattern='^(next|group_.*|vacancy_.*)$'))
-
-    form_handler = ConversationHandler(
-        entry_points=[CallbackQueryHandler(start_form, pattern=r'^form\|')],
-        states={
-            ASK_NAME: [MessageHandler(Filters.text & ~Filters.command, ask_phone)],
-            ASK_PHONE: [MessageHandler(Filters.text & ~Filters.command, ask_age)],
-            ASK_AGE: [MessageHandler(Filters.text & ~Filters.command, finish_form)],
-        },
-        fallbacks=[CommandHandler('cancel', cancel_form)]
-    )
-    dp.add_handler(form_handler)
-
-    PORT = int(os.environ.get("PORT", "8443"))
-    WEBHOOK_URL = os.environ.get("WEBHOOK_URL")
-
-    updater.start_webhook(
-        listen="0.0.0.0",
-        port=PORT,
-        url_path=TOKEN,
-        webhook_url=f"{WEBHOOK_URL}/{TOKEN}"
-    )
-
-    updater.idle()
+# === Роути Flask ===
 
 @app.route(f'/{TOKEN}', methods=['POST'])
 def webhook():
-    global dispatcher
-    if dispatcher:
-        json_data = request.get_json(force=True)
-        update = TGUpdate.de_json(json_data, dispatcher.bot)
-        dispatcher.process_update(update)
+    update = Update.de_json(request.get_json(force=True), bot)
+    dispatcher.process_update(update)
     return 'ok'
 
+@app.route('/')
+def index():
+    return "Бот працює"
+
+# === Handlers ===
+
+dispatcher.add_handler(CommandHandler('start', start))
+dispatcher.add_handler(CallbackQueryHandler(button, pattern='^(next|group_.*|vacancy_.*)$'))
+dispatcher.add_handler(CallbackQueryHandler(start_form, pattern=r'^form\|'))
+
+form_handler = ConversationHandler(
+    entry_points=[CallbackQueryHandler(start_form, pattern=r'^form\|')],
+    states={
+        ASK_NAME: [MessageHandler(Filters.text & ~Filters.command, ask_phone)],
+        ASK_PHONE: [MessageHandler(Filters.text & ~Filters.command, ask_age)],
+        ASK_AGE: [MessageHandler(Filters.text & ~Filters.command, finish_form)],
+    },
+    fallbacks=[CommandHandler('cancel', cancel_form)]
+)
+dispatcher.add_handler(form_handler)
+
+# === Запуск Flask ===
+
 if __name__ == '__main__':
-    main()
+    port = int(os.environ.get('PORT', 8443))
+    app.run(host='0.0.0.0', port=port)
