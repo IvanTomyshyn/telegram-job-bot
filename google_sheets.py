@@ -1,19 +1,29 @@
 import os
 import json
 import gspread
-from google.oauth2 import service_account
+from oauth2client.service_account import ServiceAccountCredentials
 
-SCOPES = [
-    'https://www.googleapis.com/auth/spreadsheets',
-    'https://www.googleapis.com/auth/drive'
-]
-SPREADSHEET_NAME = 'Telegram_Bot_Anketa'
+# Читання JSON із змінної середовища
+credentials_raw = os.environ.get('GOOGLE_CREDENTIALS')
 
-credentials_info = json.loads(os.environ['GOOGLE_CREDENTIALS'])
-credentials = service_account.Credentials.from_service_account_info(credentials_info, scopes=SCOPES)
+# Перевірка, якщо не знайдено
+if not credentials_raw:
+    raise Exception("GOOGLE_CREDENTIALS env variable not found!")
+
+# Декодування JSON
+try:
+    credentials_info = json.loads(credentials_raw)
+except json.JSONDecodeError:
+    raise Exception("GOOGLE_CREDENTIALS is not valid JSON!")
+
+# Авторизація Google Sheets
+scope = ['https://spreadsheets.google.com/feeds', 'https://www.googleapis.com/auth/drive']
+credentials = ServiceAccountCredentials.from_json_keyfile_dict(credentials_info, scope)
 client = gspread.authorize(credentials)
 
-worksheet = client.open(SPREADSHEET_NAME).sheet1
+# Підключення до таблиці
+sheet = client.open(os.environ['GOOGLE_SHEET_NAME']).sheet1
 
-def write_to_google_sheet(data):
-    worksheet.append_row(data)
+# Функція запису в таблицю
+def write_to_google_sheet(data: list):
+    sheet.append_row(data)
