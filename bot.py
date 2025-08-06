@@ -172,7 +172,8 @@ from telegram.ext import Updater, CommandHandler, CallbackQueryHandler, MessageH
 
 # === 1. Отримуємо токен і URL вебхука ===
 TOKEN = os.environ.get("TOKEN")
-WEBHOOK_URL = f"https://{os.environ.get('RAILWAY_STATIC_URL', 'satisfied-elegance-production.up.railway.app')}"
+WEBHOOK_URL = os.environ.get("RAILWAY_STATIC_URL", "your_project_name.up.railway.app")
+WEBHOOK_URL = f"https://{WEBHOOK_URL}"
 
 # === 2. Ініціалізуємо бота ===
 updater = Updater(TOKEN, use_context=True)
