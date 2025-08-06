@@ -1,6 +1,13 @@
-import logging
 import os
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, InputFile
+import json
+import logging
+from datetime import datetime
+from telegram import (
+    Update,
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+    InputFile
+)
 from telegram.ext import (
     Updater,
     CommandHandler,
@@ -8,19 +15,19 @@ from telegram.ext import (
     CallbackContext,
     ConversationHandler,
     MessageHandler,
-    Filters,
+    Filters
 )
 from google_sheets import write_to_google_sheet
-from datetime import datetime
 
 # === Logging ===
 logging.basicConfig(
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    level=logging.INFO
 )
 logger = logging.getLogger(__name__)
 
 # === Conversation states ===
-(SELECTING_CATEGORY, SELECTING_VACANCY, ASK_NAME, ASK_PHONE, ASK_AGE, CONFIRM_DATA) = range(6)
+SELECTING_CATEGORY, SELECTING_VACANCY, ASK_NAME, ASK_PHONE, ASK_AGE = range(5)
 
 # === Load content ===
 def load_greeting():
@@ -40,8 +47,7 @@ def load_vacancy_descriptions():
 
 def load_vacancy_groups():
     with open("vacancy_groups", "r", encoding="utf-8") as f:
-        content = f.read()
-    lines = content.strip().split("\n")
+        lines = f.read().strip().split("\n")
     groups = {"men": [], "women": [], "couples": []}
     for line in lines:
         if " - " in line:
@@ -52,7 +58,6 @@ def load_vacancy_groups():
     return groups
 
 def load_vacancies():
-    import json
     with open("vacancies.json", "r", encoding="utf-8") as f:
         return json.load(f)
 
@@ -72,7 +77,7 @@ def handle_next(update: Update, context: CallbackContext) -> int:
     keyboard = [
         [InlineKeyboardButton("Вакансії для чоловіків", callback_data="men")],
         [InlineKeyboardButton("Вакансії для жінок", callback_data="women")],
-        [InlineKeyboardButton("Вакансії для сімейних пар", callback_data="couples")],
+        [InlineKeyboardButton("Вакансії для сімейних пар", callback_data="couples")]
     ]
     query.edit_message_text("Оберіть категорію вакансій:", reply_markup=InlineKeyboardMarkup(keyboard))
     return SELECTING_VACANCY
@@ -118,6 +123,7 @@ def ask_age(update: Update, context: CallbackContext) -> int:
 def confirm_data(update: Update, context: CallbackContext) -> int:
     context.user_data["age"] = update.message.text
     data = context.user_data
+
     summary = (
         f"📄 Дані анкети:\n\n"
         f"👤 Ім’я: {data['name']}\n"
@@ -125,6 +131,7 @@ def confirm_data(update: Update, context: CallbackContext) -> int:
         f"🎂 Вік: {data['age']}\n"
         f"💼 Вакансія: {data['vacancy']}"
     )
+
     update.message.reply_text("Дякуємо! Ваші дані збережено. Наш менеджер з вами зв'яжеться.")
     write_to_google_sheet({
         "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
@@ -134,23 +141,29 @@ def confirm_data(update: Update, context: CallbackContext) -> int:
         "vacancy": data["vacancy"],
         "source": "Telegram"
     })
+
     context.bot.send_message(
         chat_id='@robota_cz_24_7',
         text=f"🔔 Нова заявка!\n\n{summary}"
     )
+
     return ConversationHandler.END
 
 def cancel(update: Update, context: CallbackContext) -> int:
     update.message.reply_text("Дію скасовано.")
     return ConversationHandler.END
 
-# === Main ===
+# === MAIN FUNCTION ===
 def main():
     TOKEN = os.getenv("TOKEN")
     if not TOKEN:
-        raise ValueError("TOKEN is missing from environment variables.")
+        raise ValueError("❌ Environment variable 'TOKEN' is missing.")
+
+    WEBHOOK_URL = os.getenv("RAILWAY_STATIC_URL", "your_project_name.up.railway.app")
+    WEBHOOK_URL = f"https://{WEBHOOK_URL}"
+
     updater = Updater(TOKEN, use_context=True)
-    dp = updater.dispatcher
+    dispatcher = updater.dispatcher
 
     conv_handler = ConversationHandler(
         entry_points=[CommandHandler("start", start)],
@@ -160,35 +173,28 @@ def main():
                 CallbackQueryHandler(handle_group_selection, pattern="^(men|women|couples)$"),
                 CallbackQueryHandler(handle_vacancy_selection)
             ],
-            ASK_NAME: [CallbackQueryHandler(fill_form, pattern="^fill_form$"), MessageHandler(Filters.text & ~Filters.command, ask_phone)],
+            ASK_NAME: [
+                CallbackQueryHandler(fill_form, pattern="^fill_form$"),
+                MessageHandler(Filters.text & ~Filters.command, ask_phone)
+            ],
             ASK_PHONE: [MessageHandler(Filters.text & ~Filters.command, ask_age)],
-            ASK_AGE: [MessageHandler(Filters.text & ~Filters.command, confirm_data)],
+            ASK_AGE: [MessageHandler(Filters.text & ~Filters.command, confirm_data)]
         },
-        fallbacks=[CommandHandler("cancel", cancel)],
+        fallbacks=[CommandHandler("cancel", cancel)]
     )
 
-import os
-from telegram.ext import Updater, CommandHandler, CallbackQueryHandler, MessageHandler, Filters
+    dispatcher.add_handler(conv_handler)
 
-# === 1. Отримуємо токен і URL вебхука ===
-TOKEN = os.environ.get("TOKEN")
-WEBHOOK_URL = os.environ.get("RAILWAY_STATIC_URL", "your_project_name.up.railway.app")
-WEBHOOK_URL = f"https://{WEBHOOK_URL}"
+    PORT = int(os.environ.get("PORT", 8443))
+    updater.start_webhook(
+        listen="0.0.0.0",
+        port=PORT,
+        url_path=TOKEN,
+        webhook_url=f"{WEBHOOK_URL}/{TOKEN}"
+    )
 
-# === 2. Ініціалізуємо бота ===
-updater = Updater(TOKEN, use_context=True)
-dispatcher = updater.dispatcher
+    updater.idle()
 
-# === 3. Додаємо обробники ===
-dispatcher.add_handler(CommandHandler("start", start))
-dispatcher.add_handler(CallbackQueryHandler(handle_next, pattern="^group_"))
-dispatcher.add_handler(CallbackQueryHandler(handle_group_selection, pattern="^vacancy_"))
-
-# === 4. Запускаємо webhook (для Railway) ===
-
-updater.start_polling()
-updater.idle()
-
+# === Start point ===
 if __name__ == "__main__":
     main()
-# redeploy to refresh env vars
