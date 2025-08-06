@@ -185,15 +185,8 @@ dispatcher.add_handler(CallbackQueryHandler(handle_next, pattern="^group_"))
 dispatcher.add_handler(CallbackQueryHandler(handle_group_selection, pattern="^vacancy_"))
 
 # === 4. Запускаємо webhook (для Railway) ===
-PORT = int(os.environ.get("PORT", 8443))
 
-updater.start_webhook(
-    listen="0.0.0.0",
-    port=PORT,
-    url_path=TOKEN,
-    webhook_url=f"{WEBHOOK_URL}/{TOKEN}"
-)
-
+updater.start_polling()
 updater.idle()
 
 if __name__ == "__main__":
