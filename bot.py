@@ -104,7 +104,14 @@ def finish_form(update: Update, context: CallbackContext):
     age = context.user_data['age']
     vacancy = context.user_data['vacancy']
 
-    write_to_google_sheet(name, phone, age, vacancy)
+    write_to_google_sheet({
+    "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+    "name": data["name"],
+    "phone": data["phone"],
+    "age": data["age"],
+    "vacancy": data["vacancy"],
+    "source": "Telegram"
+})
 
     update.message.reply_text("✅ *Дякуємо!* Ми отримали твої дані.\nНайближчим часом координатор зв’яжеться з тобою.", parse_mode='Markdown')
 
