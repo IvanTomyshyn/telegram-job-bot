@@ -167,18 +167,34 @@ def main():
         fallbacks=[CommandHandler("cancel", cancel)],
     )
 
-    dp.add_handler(conv_handler)
+import os
+from telegram.ext import Updater, CommandHandler, CallbackQueryHandler, MessageHandler, Filters
 
-    PORT = int(os.environ.get("PORT", 8443))
-    WEBHOOK_URL = os.environ.get("WEBHOOK_URL")
+# === 1. Отримуємо токен і URL вебхука ===
+TOKEN = os.environ.get("TOKEN")
+WEBHOOK_URL = f"https://{os.environ['RAILWAY_STATIC_URL']}"
 
-    updater.start_webhook(
-        listen="0.0.0.0",
-        port=PORT,
-        url_path=TOKEN,
-        webhook_url=f"{WEBHOOK_URL}/{TOKEN}"
-    )
-    updater.idle()
+# === 2. Ініціалізуємо бота ===
+updater = Updater(TOKEN, use_context=True)
+dispatcher = updater.dispatcher
+
+# === 3. Додаємо обробники ===
+dispatcher.add_handler(CommandHandler("start", start))
+dispatcher.add_handler(CallbackQueryHandler(handle_next, pattern="^group_"))
+dispatcher.add_handler(CallbackQueryHandler(handle_group_selection, pattern="^vacancy_"))
+dispatcher.add_handler(MessageHandler(Filters.text & ~Filters.command, handle_form)) # якщо анкета
+
+# === 4. Запускаємо webhook (для Railway) ===
+PORT = int(os.environ.get("PORT", 8443))
+
+updater.start_webhook(
+    listen="0.0.0.0",
+    port=PORT,
+    url_path=TOKEN,
+    webhook_url=f"{WEBHOOK_URL}/{TOKEN}"
+)
+
+updater.idle()
 
 if __name__ == "__main__":
     main()
