@@ -183,7 +183,6 @@ dispatcher = updater.dispatcher
 dispatcher.add_handler(CommandHandler("start", start))
 dispatcher.add_handler(CallbackQueryHandler(handle_next, pattern="^group_"))
 dispatcher.add_handler(CallbackQueryHandler(handle_group_selection, pattern="^vacancy_"))
-dispatcher.add_handler(MessageHandler(Filters.text & ~Filters.command, handle_form)) # якщо анкета
 
 # === 4. Запускаємо webhook (для Railway) ===
 PORT = int(os.environ.get("PORT", 8443))
