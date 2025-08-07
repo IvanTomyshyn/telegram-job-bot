@@ -1,6 +1,7 @@
 import json
 import logging
 
+from datetime import datetime
 from telegram import (
     Update,
     InlineKeyboardButton,
@@ -33,7 +34,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # === Шлях до відео ===
-VIDEO_PATH = r"C:\\Users\\admin\\Desktop\\telegram-job-bot\\intro.mp4"
+VIDEO_PATH = "intro.mp4"
 
 # === Завантаження даних ===
 
@@ -104,14 +105,17 @@ def finish_form(update: Update, context: CallbackContext):
     age = context.user_data['age']
     vacancy = context.user_data['vacancy']
 
+   try:
     write_to_google_sheet({
-    "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-    "name": data["name"],
-    "phone": data["phone"],
-    "age": data["age"],
-    "vacancy": data["vacancy"],
-    "source": "Telegram"
-})
+        "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "name": name,
+        "phone": phone,
+        "age": age,
+        "vacancy": vacancy,
+        "source": "Telegram"
+    })
+except Exception as e:
+    logger.error(f"❌ Помилка при записі в Google Таблицю: {e}")
 
     update.message.reply_text("✅ *Дякуємо!* Ми отримали твої дані.\nНайближчим часом координатор зв’яжеться з тобою.", parse_mode='Markdown')
 
@@ -240,9 +244,13 @@ def button(update: Update, context: CallbackContext):
     elif data.startswith('vacancy_'):
         show_vacancy_description(query, data)
 
+def error_handler(update, context):
+    logger.error(msg="❗ Exception while handling update:", exc_info=context.error)
+
 def main():
     updater = Updater(TOKEN, use_context=True)
     dp = updater.dispatcher
+    dp.add_error_handler(error_handler)
 
     dp.add_handler(CommandHandler('start', start))
     dp.add_handler(CallbackQueryHandler(button, pattern='^(next|group_.*|vacancy_.*)$'))
